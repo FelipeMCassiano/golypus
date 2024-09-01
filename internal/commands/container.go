@@ -12,5 +12,7 @@ func CreateContainerCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(subcommands.CreateContainerListCommand())
+	cmd.AddCommand(subcommands.CreateContainerRunCommand())
+	// cmd.AddCommand(subcommands.CreateContainerBuildCommand())
 	return cmd
 }
