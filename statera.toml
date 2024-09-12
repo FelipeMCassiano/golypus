@@ -1,0 +1,13 @@
+port = "9999"
+
+[[servers]]
+name = "api1"
+host = "localhost"
+port = "8080"
+
+[[servers]]
+name = "api2"
+host = "localhost"
+port = "8081"
+
+
