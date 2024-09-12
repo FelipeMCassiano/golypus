@@ -104,17 +104,51 @@ func monitorContainerStatus(ctx context.Context, containerId string, clt *client
 		if err != nil {
 			return err
 		}
-
-		log.Printf("CPU Usage: %v\n", containerStats.CPUStats.CPUUsage.TotalUsage)
-		log.Printf("Memory Usage: %v / %v\n", containerStats.MemoryStats.Usage, containerStats.MemoryStats.Limit)
-		log.Printf("Network I/O: Rx: %v, Tx: %v\n", containerStats.Networks["eth0"].RxBytes, containerStats.Networks["eth0"].TxBytes)
-		log.Println()
-
+		metrics := getMetrics(containerStats)
+		autoScale(containerStats.ID, metrics)
 		time.Sleep(1 * time.Second)
 	}
 }
 
+type containerMetrics struct {
+	MemUsed    float64
+	MemAvail   float64
+	CpuPerc    float64
+	CpuMaxPerc float64
+}
+
+func getMetrics(containerStats container.StatsResponse) *containerMetrics {
+	memUsed := containerStats.MemoryStats.Usage
+	memAvail := containerStats.MemoryStats.Limit
+
+	cpuUsage := containerStats.CPUStats.CPUUsage.TotalUsage - containerStats.PreCPUStats.CPUUsage.TotalUsage
+	cpuSystem := containerStats.CPUStats.SystemUsage - containerStats.PreCPUStats.SystemUsage
+	numCpus := containerStats.CPUStats.OnlineCPUs
+
+	cpuPerc := (cpuUsage / cpuSystem) * uint64(numCpus) * 100
+	cpuMaxPerc := numCpus * 100
+
+	return &containerMetrics{
+		MemUsed:    float64(memUsed),
+		MemAvail:   float64(memAvail),
+		CpuPerc:    float64(cpuPerc),
+		CpuMaxPerc: float64(cpuMaxPerc),
+	}
+}
+
+func autoScale(containerId string, metrics *containerMetrics) {
+	if metrics.MemUsed == metrics.MemAvail*0.75 {
+		// create a copy of the container
+	}
+
+	if metrics.CpuPerc == metrics.CpuMaxPerc*075 {
+		// create a copy of the container
+		// Use client.commit, i think
+	}
+}
+
 // BRAINSTORM Points a copy of the volume to the same container like two to one volume
+// Just saving it for later
 
 func Execute() {
 	rootCmd.AddCommand()
