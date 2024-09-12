@@ -137,10 +137,13 @@ func getMetrics(containerStats container.StatsResponse) *containerMetrics {
 }
 
 func autoScale(containerId string, metrics *containerMetrics) {
+	// 75% of all memory
 	if metrics.MemUsed == metrics.MemAvail*0.75 {
 		// create a copy of the container
+		// Use client.commit, i think
 	}
 
+	// 75% of cpu
 	if metrics.CpuPerc == metrics.CpuMaxPerc*075 {
 		// create a copy of the container
 		// Use client.commit, i think
