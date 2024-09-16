@@ -10,6 +10,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const MAX_MONITORS = 10
+
 func ListenDockerEvents(ctx context.Context) error {
 	clt, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -19,17 +21,18 @@ func ListenDockerEvents(ctx context.Context) error {
 	messages, errs := clt.Events(ctx, events.ListOptions{})
 	group, gctx := errgroup.WithContext(ctx)
 
+	group.SetLimit(MAX_MONITORS)
+
 	for {
 		select {
 		case msg := <-messages:
 			if msg.Type == events.ContainerEventType && msg.Action == "create" {
-				go func(clt *client.Client, containerId string) {
-					log.Printf("Container created: %s\n", msg.Actor.ID)
-					<-time.After(30 * time.Second)
-					group.Go(func() error {
-						return monitorContainerStats(gctx, msg.Actor.ID, clt)
-					})
-				}(clt, msg.Actor.ID)
+				log.Printf("Container created: %s\n", msg.Actor.ID)
+				<-time.After(30 * time.Second)
+
+				group.Go(func() error {
+					return monitorContainerStats(gctx, msg.Actor.ID, clt)
+				})
 			}
 		case err := <-errs:
 			if err != nil && err != context.Canceled {

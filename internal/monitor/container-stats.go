@@ -39,10 +39,5 @@ func monitorContainerStats(ctx context.Context, containerId string, clt *client.
 		return nil
 	})
 
-	if err := group.Wait(); err != nil {
-		log.Printf("Error in monitorContainerStatus: %v", err)
-		return err
-	}
-
-	return nil
+	return group.Wait()
 }

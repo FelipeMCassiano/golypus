@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -14,12 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var mutex sync.Mutex
-
 func autoScale(ctx context.Context, containerId string, metrics *containerMetrics, clt *client.Client) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	cooldown := 5 * time.Minute
 	lastScaled := time.Now().Add(-cooldown)
 
