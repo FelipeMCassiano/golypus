@@ -79,8 +79,7 @@ func CreateRootCommand() *cobra.Command {
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&signalRecieved, "signal", "s", "s", "Send signal ")
-
+	rootCmd.PersistentFlags().StringVarP(&signalRecieved, "signal", "s", " ", "Send signal ")
 	return rootCmd
 }
 

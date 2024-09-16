@@ -1,3 +1,4 @@
+sudo go run main.go -s quit
 sudo rm golypus.log
 sudo rm golypus.pid
 

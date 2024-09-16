@@ -3,14 +3,12 @@ package monitor
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/google/uuid"
 )
 
 func autoScale(ctx context.Context, containerId string, metrics *containerMetrics, clt *client.Client) error {
@@ -20,9 +18,9 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 	scaled := false
 
 	for {
-		// Log metrics and scaling decisions
-		log.Printf("Memory used: %d, Memory available: %d (75%% threshold: %d)", metrics.MemUsed, metrics.MemAvail, (metrics.MemAvail*75)/100)
-		log.Printf("CPU used: %.2f%%, Max CPU: %.2f%% (75%% threshold: %.2f%%)", metrics.CpuPerc, metrics.CpuMaxPerc, metrics.CpuMaxPerc*0.75)
+
+		// log.Printf("Memory used: %d, Memory available: %d (75%% threshold: %d)", metrics.MemUsed, metrics.MemAvail, (metrics.MemAvail*75)/100)
+		// log.Printf("CPU used: %.2f%%, Max CPU: %.2f%% (75%% threshold: %.2f%%)", metrics.CpuPerc, metrics.CpuMaxPerc, metrics.CpuMaxPerc*0.75)
 
 		if metrics.MemUsed >= (metrics.MemAvail*75)/100 {
 			s, lS, err := scaleWhenTheThresholdIsTriggered(scaled, lastScaled, cooldown, ctx, containerId, clt)
@@ -68,6 +66,8 @@ func scaleWhenTheThresholdIsTriggered(scaled bool, lastScaled time.Time, cooldow
 	return true, lastScaled, nil
 }
 
+const COPY_NAME_SUFFIX = "copy"
+
 func performScaling(ctx context.Context, containerId string, clt *client.Client) (bool, error) {
 	containerInfo, err := clt.ContainerInspect(ctx, containerId)
 	if err != nil {
@@ -75,7 +75,12 @@ func performScaling(ctx context.Context, containerId string, clt *client.Client)
 	}
 
 	originalName := strings.TrimPrefix(containerInfo.Name, "/")
-	copyContainerName := fmt.Sprintf("%s-copy-%s", originalName, uuid.NewString())
+
+	// cannot have the copy of the copy
+	if strings.HasSuffix(originalName, COPY_NAME_SUFFIX) {
+		return true, nil
+	}
+	copyContainerName := fmt.Sprintf("%s-%s", originalName, COPY_NAME_SUFFIX)
 
 	hostConfig := containerInfo.HostConfig
 

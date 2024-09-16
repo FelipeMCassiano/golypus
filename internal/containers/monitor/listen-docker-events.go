@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/client"
@@ -20,14 +21,13 @@ func ListenDockerEvents(ctx context.Context) error {
 	messages, errs := clt.Events(ctx, events.ListOptions{})
 	group, gctx := errgroup.WithContext(ctx)
 
-	group.SetLimit(MAX_MONITORS)
-
 	for {
 		select {
 		case msg := <-messages:
 			if msg.Type == events.ContainerEventType && msg.Action == "create" {
 				log.Printf("Container created: %s\n", msg.Actor.ID)
 				go func(ctx context.Context, containerId string, clt *client.Client) {
+					<-time.After(30 * time.Second)
 					group.Go(func() error {
 						return monitorContainerStats(ctx, containerId, clt)
 					})
