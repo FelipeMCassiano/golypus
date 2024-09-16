@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/FelipeMCassiano/golypus/internal/monitor"
+	"github.com/FelipeMCassiano/golypus/internal/containers/monitor"
 	"github.com/FelipeMCassiano/golypus/internal/utils"
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -18,10 +18,10 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "golypus",
-	Short: "",
-	Long:  ``,
-	RunE:  runDaemon,
+	Use:     "golypus",
+	Short:   "Monitor docker containers and scale them if necessary",
+	RunE:    runDaemon,
+	Version: "0.1",
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {
