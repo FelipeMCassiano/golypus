@@ -10,7 +10,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func monitorContainerStatus(ctx context.Context, containerId string, clt *client.Client) error {
+func monitorContainerStats(ctx context.Context, containerId string, clt *client.Client) error {
 	group, gctx := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		stats, err := clt.ContainerStats(gctx, containerId, true)

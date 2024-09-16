@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/FelipeMCassiano/golypus/internal/monitor"
+	"github.com/FelipeMCassiano/golypus/internal/utils"
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -45,6 +46,7 @@ var rootCmd = &cobra.Command{
 			select {
 			case signal := <-sigs:
 				log.Printf("Received signal: %s ... Shutdown", signal)
+				utils.GracefulShutdown()
 				return nil
 			case <-ctx.Done():
 				return ctx.Err()
@@ -62,7 +64,8 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		select {}
+		<-ctx.Done()
+		return nil
 	},
 }
 

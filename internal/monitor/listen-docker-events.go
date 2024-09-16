@@ -27,7 +27,7 @@ func ListenDockerEvents(ctx context.Context) error {
 					log.Printf("Container created: %s\n", msg.Actor.ID)
 					<-time.After(30 * time.Second)
 					group.Go(func() error {
-						return monitorContainerStatus(gctx, msg.Actor.ID, clt)
+						return monitorContainerStats(gctx, msg.Actor.ID, clt)
 					})
 				}(clt, msg.Actor.ID)
 			}
