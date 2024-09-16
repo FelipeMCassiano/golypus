@@ -7,71 +7,100 @@ import (
 	"context"
 	"log"
 	"os"
-	"os/signal"
 	"syscall"
 
 	"github.com/FelipeMCassiano/golypus/internal/containers/monitor"
-	"github.com/FelipeMCassiano/golypus/internal/utils"
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
 
-var rootCmd = &cobra.Command{
-	Use:     "golypus",
-	Short:   "Monitor docker containers and scale them if necessary",
-	RunE:    runDaemon,
-	Version: "0.0.1",
+func CreateRootCommand() *cobra.Command {
+	var signalRecieved string
+	rootCmd := &cobra.Command{
+		Use:   "golypus",
+		Short: "Monitor docker containers and scale them if necessary",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			group, ctx := errgroup.WithContext(context.Background())
+
+			daemon.AddCommand(daemon.StringFlag(&signalRecieved, "quit"), syscall.SIGQUIT, termHandler)
+			daemon.AddCommand(daemon.StringFlag(&signalRecieved, "stop"), syscall.SIGTERM, termHandler)
+
+			cntxt := &daemon.Context{
+				PidFileName: "golypus.pid",
+				PidFilePerm: 0644,
+				LogFileName: "golypus.log",
+				LogFilePerm: 0640,
+			}
+
+			if len(daemon.ActiveFlags()) > 0 {
+				d, err := cntxt.Search()
+				if err != nil {
+					return err
+				}
+
+				err = daemon.SendCommands(d)
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+
+			d, err := cntxt.Reborn()
+			if err != nil {
+				return err
+			}
+			if d != nil {
+				return nil
+			}
+
+			defer cntxt.Release()
+
+			monitorCtx, cancelMonitor := context.WithCancel(context.Background())
+			defer cancelMonitor()
+
+			group.Go(func() error {
+				return monitor.ListenDockerEvents(monitorCtx)
+			})
+
+			if err := group.Wait(); err != nil {
+				cancelMonitor()
+				return err
+			}
+
+			err = daemon.ServeSignals()
+			if err != nil {
+				return err
+			}
+
+			<-ctx.Done()
+			return nil
+		},
+		Version: "0.0.1",
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&signalRecieved, "signal", "s", "s", "Send signal ")
+
+	return rootCmd
 }
 
-func runDaemon(cmd *cobra.Command, args []string) error {
-	group, ctx := errgroup.WithContext(context.Background())
-	cntxt := &daemon.Context{
-		PidFileName: "golypus.pid",
-		PidFilePerm: 0644,
-		LogFileName: "golypus.log",
-		LogFilePerm: 0640,
+var (
+	stop = make(chan struct{})
+	done = make(chan struct{})
+)
+
+func termHandler(sig os.Signal) error {
+	log.Println("terminating...")
+	stop <- struct{}{}
+
+	if sig == syscall.SIGQUIT {
+		<-done
 	}
-	d, err := cntxt.Reborn()
-	if err != nil {
-		return err
-	}
-	if d != nil {
-		return nil
-	}
-
-	defer cntxt.Release()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	group.Go(func() error {
-		select {
-		case signal := <-sigs:
-			log.Printf("Received signal: %s ... Shutdown", signal)
-			utils.GracefulShutdown()
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	})
-	monitorCtx, cancelMonitor := context.WithCancel(context.Background())
-	defer cancelMonitor()
-
-	group.Go(func() error {
-		return monitor.ListenDockerEvents(monitorCtx)
-	})
-
-	if err := group.Wait(); err != nil {
-		cancelMonitor()
-		return err
-	}
-
-	<-ctx.Done()
-	return nil
+	return daemon.ErrStop
 }
 
 func Execute() {
+	rootCmd := CreateRootCommand()
 	rootCmd.AddCommand()
 	err := rootCmd.Execute()
 	if err != nil {
