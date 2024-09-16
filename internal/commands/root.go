@@ -21,7 +21,7 @@ var rootCmd = &cobra.Command{
 	Use:     "golypus",
 	Short:   "Monitor docker containers and scale them if necessary",
 	RunE:    runDaemon,
-	Version: "0.1",
+	Version: "0.0.1",
 }
 
 func runDaemon(cmd *cobra.Command, args []string) error {

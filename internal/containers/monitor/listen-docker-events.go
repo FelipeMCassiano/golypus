@@ -3,7 +3,6 @@ package monitor
 import (
 	"context"
 	"log"
-	"time"
 
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/client"
@@ -28,11 +27,11 @@ func ListenDockerEvents(ctx context.Context) error {
 		case msg := <-messages:
 			if msg.Type == events.ContainerEventType && msg.Action == "create" {
 				log.Printf("Container created: %s\n", msg.Actor.ID)
-				<-time.After(30 * time.Second)
-
-				group.Go(func() error {
-					return monitorContainerStats(gctx, msg.Actor.ID, clt)
-				})
+				go func(ctx context.Context, containerId string, clt *client.Client) {
+					group.Go(func() error {
+						return monitorContainerStats(ctx, containerId, clt)
+					})
+				}(gctx, msg.Actor.ID, clt)
 			}
 		case err := <-errs:
 			if err != nil && err != context.Canceled {
