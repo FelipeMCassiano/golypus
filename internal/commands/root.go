@@ -18,8 +18,9 @@ import (
 func CreateRootCommand() *cobra.Command {
 	var signalRecieved string
 	rootCmd := &cobra.Command{
-		Use:   "golypus",
-		Short: "Monitor docker containers and scale them if necessary",
+		Use:     "golypus",
+		Short:   "Monitor docker containers and scale them if necessary",
+		Version: "0.0.1",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			group, ctx := errgroup.WithContext(context.Background())
 
@@ -76,7 +77,6 @@ func CreateRootCommand() *cobra.Command {
 			<-ctx.Done()
 			return nil
 		},
-		Version: "0.0.1",
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&signalRecieved, "signal", "s", "s", "Send signal ")

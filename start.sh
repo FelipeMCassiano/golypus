@@ -1,9 +1,3 @@
-GPid =$(cat golypus.pid)
-
-echo $GPid
-
-sudo kill -SIGTERM $GPid
-
 sudo rm golypus.log
 sudo rm golypus.pid
 
