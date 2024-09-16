@@ -20,6 +20,7 @@ func ListenDockerEvents(ctx context.Context) error {
 
 	messages, errs := clt.Events(ctx, events.ListOptions{})
 	group, gctx := errgroup.WithContext(ctx)
+	group.SetLimit(10)
 
 	for {
 		select {
