@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/events"
@@ -22,6 +23,8 @@ func ListenDockerEvents(ctx context.Context) error {
 	group, gctx := errgroup.WithContext(ctx)
 	group.SetLimit(10)
 
+	var wg sync.WaitGroup
+
 	for {
 		select {
 		case msg := <-messages:
@@ -33,6 +36,8 @@ func ListenDockerEvents(ctx context.Context) error {
 						return monitorContainerStats(ctx, containerId, clt)
 					})
 				}(gctx, msg.Actor.ID, clt)
+
+				wg.Wait()
 			}
 		case err := <-errs:
 			if err != nil && err != context.Canceled {
