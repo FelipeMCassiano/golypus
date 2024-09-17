@@ -4,8 +4,8 @@ package loadbalancer
 // after a container be scaled use the loadbalance to proxy all reqs
 
 type LoadBalancer struct {
-	Servers []*Server
-	Port    string
+	Port        string
+	ServerPorts []ContainerPorts
 }
 
 func (l *LoadBalancer) Serve() {
@@ -14,10 +14,8 @@ func (l *LoadBalancer) Serve() {
 func (l *LoadBalancer) Choose() {
 }
 
-func NewLoadBalancer() *LoadBalancer {
-	return &LoadBalancer{}
+func NewLoadBalancer(port string, serverPorts []ContainerPorts) *LoadBalancer {
+	return &LoadBalancer{Port: port, ServerPorts: serverPorts}
 }
 
-type Server struct {
-	Port string
-}
+type ContainerPorts map[string]string

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	loadbalancer "github.com/FelipeMCassiano/golypus/internal/containers/load-balancer"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -24,13 +25,16 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 
 		if metrics.MemUsed >= (metrics.MemAvail*75)/100 || metrics.CpuPerc >= metrics.CpuMaxPerc*0.75 {
 			if !scaled && time.Since(lastScaled) >= cooldown {
-				created, err := performScaling(ctx, containerId, clt)
+				created, originalPort, containerPorts, err := performScaling(ctx, containerId, clt)
 				if err != nil {
 					return err
 				}
 				if created {
 					scaled = true
 					lastScaled = time.Now()
+
+					loadbalancer.NewLoadBalancer(originalPort, containerPorts)
+
 					continue
 				}
 
@@ -47,19 +51,19 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 
 const COPY_NAME_SUFFIX = "copy"
 
-func performScaling(ctx context.Context, containerId string, clt *client.Client) (bool, error) {
+func performScaling(ctx context.Context, containerId string, clt *client.Client) (bool, string, []loadbalancer.ContainerPorts, error) {
 	containerInfo, err := clt.ContainerInspect(ctx, containerId)
 	if err != nil {
-		return false, err
+		return false, "", nil, err
 	}
+	defer clt.ContainerRemove(ctx, containerInfo.ID, container.RemoveOptions{})
 
 	originalName := strings.TrimPrefix(containerInfo.Name, "/")
 
 	// cannot have the copy of the copy
 	if strings.HasSuffix(originalName, COPY_NAME_SUFFIX) {
-		return true, nil
+		return true, "", nil, nil
 	}
-	copyContainerName := fmt.Sprintf("%s-%s", originalName, COPY_NAME_SUFFIX)
 
 	hostConfig := containerInfo.HostConfig
 
@@ -71,27 +75,63 @@ func performScaling(ctx context.Context, containerId string, clt *client.Client)
 		hostConfig.PortBindings[port] = bindings
 	}
 
-	resp, err := clt.ContainerCreate(ctx, containerInfo.Config, hostConfig, &network.NetworkingConfig{
-		EndpointsConfig: containerInfo.NetworkSettings.Networks,
-	}, nil, copyContainerName)
+	originalId, err := createContainerAndStart(ctx, containerInfo, originalName, clt)
 	if err != nil {
-		return false, err
+		return false, "", nil, nil
+	}
+
+	copyContainerName := fmt.Sprintf("%s-%s", originalName, COPY_NAME_SUFFIX)
+
+	copyId, err := createContainerAndStart(ctx, containerInfo, copyContainerName, clt)
+	if err != nil {
+		return false, "", nil, nil
+	}
+
+	containerPort, err := getPortsOfContainer(ctx, originalId, clt)
+	if err != nil {
+		return false, "", nil, nil
+	}
+
+	copyPort, err := getPortsOfContainer(ctx, copyId, clt)
+	if err != nil {
+		return false, "", nil, nil
+	}
+
+	ports := []loadbalancer.ContainerPorts{containerPort, copyPort}
+
+	var originalPort string
+
+	for _, portsBindings := range containerInfo.NetworkSettings.Ports {
+		if len(portsBindings) > 0 {
+			originalPort = portsBindings[0].HostPort
+		}
+	}
+
+	return true, originalPort, ports, nil
+}
+
+func createContainerAndStart(ctx context.Context, containerInfo types.ContainerJSON, name string, clt *client.Client) (string, error) {
+	resp, err := clt.ContainerCreate(ctx, containerInfo.Config, containerInfo.HostConfig, &network.NetworkingConfig{EndpointsConfig: containerInfo.NetworkSettings.Networks}, nil, name)
+	if err != nil {
+		return "", err
 	}
 
 	if err := clt.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return false, err
+		return "", err
 	}
-
-	GetPortsFromClonedContainer(&containerInfo, &resp.ID, clt)
-
-	return true, nil
+	return resp.ID, nil
 }
 
-func GetPortsFromClonedContainer(ctx context.Context, orignalContainer *types.ContainerJSON, copyContainerId *string, clt *client.Client) error {
-	copyContainerInfo, err := clt.ContainerInspect(ctx, *copyContainerId)
+func getPortsOfContainer(ctx context.Context, containerId string, clt *client.Client) (loadbalancer.ContainerPorts, error) {
+	containerInfo, err := clt.ContainerInspect(ctx, containerId)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	return nil
+	hostPorts := loadbalancer.ContainerPorts{}
+	for containerPort, portsBindings := range containerInfo.NetworkSettings.Ports {
+		if len(portsBindings) > 0 {
+			hostPorts[string(containerPort)] = portsBindings[0].HostPort
+		}
+	}
+	return hostPorts, nil
 }
