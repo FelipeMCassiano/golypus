@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -18,52 +19,30 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 	scaled := false
 
 	for {
-
 		// log.Printf("Memory used: %d, Memory available: %d (75%% threshold: %d)", metrics.MemUsed, metrics.MemAvail, (metrics.MemAvail*75)/100)
 		// log.Printf("CPU used: %.2f%%, Max CPU: %.2f%% (75%% threshold: %.2f%%)", metrics.CpuPerc, metrics.CpuMaxPerc, metrics.CpuMaxPerc*0.75)
 
-		if metrics.MemUsed >= (metrics.MemAvail*75)/100 {
-			s, lS, err := scaleWhenTheThresholdIsTriggered(scaled, lastScaled, cooldown, ctx, containerId, clt)
-			if err != nil {
-				return err
-			}
-			scaled = s
-			lastScaled = lS
-			continue
-		}
-		if metrics.CpuPerc >= metrics.CpuMaxPerc*0.75 {
-			s, lS, err := scaleWhenTheThresholdIsTriggered(scaled, lastScaled, cooldown, ctx, containerId, clt)
-			if err != nil {
-				return err
-			}
-			scaled = s
-			lastScaled = lS
-			continue
-		}
+		if metrics.MemUsed >= (metrics.MemAvail*75)/100 || metrics.CpuPerc >= metrics.CpuMaxPerc*0.75 {
+			if !scaled && time.Since(lastScaled) >= cooldown {
+				created, err := performScaling(ctx, containerId, clt)
+				if err != nil {
+					return err
+				}
+				if created {
+					scaled = true
+					lastScaled = time.Now()
+					continue
+				}
 
-		// Wait for 1 minute before checking again
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(1 * time.Minute):
+				// Wait for 1 minute before checking again
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(1 * time.Minute):
+				}
+			}
 		}
 	}
-}
-
-// I didn't know a name better than this
-func scaleWhenTheThresholdIsTriggered(scaled bool, lastScaled time.Time, cooldown time.Duration, ctx context.Context, containerId string, clt *client.Client) (bool, time.Time, error) {
-	if !scaled && time.Since(lastScaled) >= cooldown {
-		created, err := performScaling(ctx, containerId, clt)
-		if err != nil {
-			return false, lastScaled, err
-		}
-		if created {
-			scaled = true
-			lastScaled = time.Now()
-		}
-	}
-
-	return true, lastScaled, nil
 }
 
 const COPY_NAME_SUFFIX = "copy"
@@ -103,5 +82,16 @@ func performScaling(ctx context.Context, containerId string, clt *client.Client)
 		return false, err
 	}
 
+	GetPortsFromClonedContainer(&containerInfo, &resp.ID, clt)
+
 	return true, nil
+}
+
+func GetPortsFromClonedContainer(ctx context.Context, orignalContainer *types.ContainerJSON, copyContainerId *string, clt *client.Client) error {
+	copyContainerInfo, err := clt.ContainerInspect(ctx, *copyContainerId)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
