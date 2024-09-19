@@ -29,7 +29,7 @@ func (l *LoadBalancer) Serve() error {
 		httputil.NewSingleHostReverseProxy(u).ServeHTTP(w, r)
 	})
 
-	return http.ListenAndServe(fmt.Sprintf(":", l.Port), nil)
+	return http.ListenAndServe(fmt.Sprintf(":%s", l.Port), nil)
 }
 
 func (l *LoadBalancer) Choose() string {

@@ -16,7 +16,8 @@ import (
 )
 
 func autoScale(ctx context.Context, containerId string, metrics *containerMetrics, clt *client.Client) error {
-	cooldown := 5 * time.Minute lastScaled := time.Now().Add(-cooldown)
+	cooldown := 5 * time.Minute
+	lastScaled := time.Now().Add(-cooldown)
 	scaled := false
 
 	url := "ws://localhost:4444/loadbalancer/create"
@@ -26,8 +27,7 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 	}
 	defer conn.Close()
 
-	for { // log.Printf("Memory used: %d, Memory available: %d (75%% threshold: %d)", metrics.MemUsed, metrics.MemAvail, (metrics.MemAvail*75)/100)
-		// log.Printf("CPU used: %.2f%%, Max CPU: %.2f%% (75%% threshold: %.2f%%)", metrics.CpuPerc, metrics.CpuMaxPerc, metrics.CpuMaxPerc*0.75)
+	for {
 		if metrics.MemUsed >= (metrics.MemAvail*75)/100 || metrics.CpuPerc >= metrics.CpuMaxPerc*0.75 {
 			if !scaled && time.Since(lastScaled) >= cooldown {
 				created, req, err := performScaling(ctx, containerId, clt)
@@ -110,7 +110,7 @@ func performScaling(ctx context.Context, containerId string, clt *client.Client)
 		return false, nil, nil
 	}
 
-	ports := []loadbalancer.ContainerPorts{containerPort, copyPort}
+	ports := append(loadbalancer.ContainerPorts{}, append(containerPort, copyPort...)...)
 
 	var originalPort string
 
