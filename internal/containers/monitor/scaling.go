@@ -2,30 +2,35 @@ package monitor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	loadbalancer "github.com/FelipeMCassiano/golypus/internal/containers/load-balancer"
+	"github.com/FelipeMCassiano/golypus/internal/loadbalancer"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/gorilla/websocket"
 )
 
 func autoScale(ctx context.Context, containerId string, metrics *containerMetrics, clt *client.Client) error {
-	cooldown := 5 * time.Minute
-	lastScaled := time.Now().Add(-cooldown)
-
+	cooldown := 5 * time.Minute lastScaled := time.Now().Add(-cooldown)
 	scaled := false
 
-	for {
-		// log.Printf("Memory used: %d, Memory available: %d (75%% threshold: %d)", metrics.MemUsed, metrics.MemAvail, (metrics.MemAvail*75)/100)
-		// log.Printf("CPU used: %.2f%%, Max CPU: %.2f%% (75%% threshold: %.2f%%)", metrics.CpuPerc, metrics.CpuMaxPerc, metrics.CpuMaxPerc*0.75)
+	url := "ws://localhost:4444/loadbalancer/create"
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
 
+	for { // log.Printf("Memory used: %d, Memory available: %d (75%% threshold: %d)", metrics.MemUsed, metrics.MemAvail, (metrics.MemAvail*75)/100)
+		// log.Printf("CPU used: %.2f%%, Max CPU: %.2f%% (75%% threshold: %.2f%%)", metrics.CpuPerc, metrics.CpuMaxPerc, metrics.CpuMaxPerc*0.75)
 		if metrics.MemUsed >= (metrics.MemAvail*75)/100 || metrics.CpuPerc >= metrics.CpuMaxPerc*0.75 {
 			if !scaled && time.Since(lastScaled) >= cooldown {
-				created, originalPort, containerPorts, err := performScaling(ctx, containerId, clt)
+				created, req, err := performScaling(ctx, containerId, clt)
 				if err != nil {
 					return err
 				}
@@ -33,7 +38,15 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 					scaled = true
 					lastScaled = time.Now()
 
-					loadbalancer.NewLoadBalancer(originalPort, containerPorts)
+					encodendMessage, err := json.Marshal(req)
+					if err != nil {
+						return err
+					}
+
+					err = conn.WriteMessage(websocket.TextMessage, encodendMessage)
+					if err != nil {
+						return err
+					}
 
 					continue
 				}
@@ -51,10 +64,10 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 
 const COPY_NAME_SUFFIX = "copy"
 
-func performScaling(ctx context.Context, containerId string, clt *client.Client) (bool, string, []loadbalancer.ContainerPorts, error) {
+func performScaling(ctx context.Context, containerId string, clt *client.Client) (bool, *loadbalancer.CreateLoadbalancerReq, error) {
 	containerInfo, err := clt.ContainerInspect(ctx, containerId)
 	if err != nil {
-		return false, "", nil, err
+		return false, nil, err
 	}
 	defer clt.ContainerRemove(ctx, containerInfo.ID, container.RemoveOptions{})
 
@@ -62,7 +75,7 @@ func performScaling(ctx context.Context, containerId string, clt *client.Client)
 
 	// cannot have the copy of the copy
 	if strings.HasSuffix(originalName, COPY_NAME_SUFFIX) {
-		return true, "", nil, nil
+		return true, nil, nil
 	}
 
 	hostConfig := containerInfo.HostConfig
@@ -77,24 +90,24 @@ func performScaling(ctx context.Context, containerId string, clt *client.Client)
 
 	originalId, err := createContainerAndStart(ctx, containerInfo, originalName, clt)
 	if err != nil {
-		return false, "", nil, nil
+		return false, nil, nil
 	}
 
 	copyContainerName := fmt.Sprintf("%s-%s", originalName, COPY_NAME_SUFFIX)
 
 	copyId, err := createContainerAndStart(ctx, containerInfo, copyContainerName, clt)
 	if err != nil {
-		return false, "", nil, nil
+		return false, nil, nil
 	}
 
 	containerPort, err := getPortsOfContainer(ctx, originalId, clt)
 	if err != nil {
-		return false, "", nil, nil
+		return false, nil, nil
 	}
 
 	copyPort, err := getPortsOfContainer(ctx, copyId, clt)
 	if err != nil {
-		return false, "", nil, nil
+		return false, nil, nil
 	}
 
 	ports := []loadbalancer.ContainerPorts{containerPort, copyPort}
@@ -107,7 +120,12 @@ func performScaling(ctx context.Context, containerId string, clt *client.Client)
 		}
 	}
 
-	return true, originalPort, ports, nil
+	createReq := &loadbalancer.CreateLoadbalancerReq{
+		LoadBalancerPort: originalPort,
+		Ports:            ports,
+	}
+
+	return true, createReq, nil
 }
 
 func createContainerAndStart(ctx context.Context, containerInfo types.ContainerJSON, name string, clt *client.Client) (string, error) {
@@ -130,8 +148,9 @@ func getPortsOfContainer(ctx context.Context, containerId string, clt *client.Cl
 	hostPorts := loadbalancer.ContainerPorts{}
 	for containerPort, portsBindings := range containerInfo.NetworkSettings.Ports {
 		if len(portsBindings) > 0 {
-			hostPorts[string(containerPort)] = portsBindings[0].HostPort
+			hostPorts = append(hostPorts, string(containerPort))
 		}
 	}
+
 	return hostPorts, nil
 }
