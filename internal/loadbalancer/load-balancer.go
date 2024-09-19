@@ -15,6 +15,7 @@ type LoadBalancer struct {
 	Port        string
 	ServerPorts ContainerPorts
 }
+type ContainerPorts []string
 
 func (l *LoadBalancer) Serve() error {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -51,5 +52,3 @@ func (l *LoadBalancer) Choose() string {
 func NewLoadBalancer(port string, serverPorts ContainerPorts) *LoadBalancer {
 	return &LoadBalancer{Port: port, ServerPorts: serverPorts}
 }
-
-type ContainerPorts []string
