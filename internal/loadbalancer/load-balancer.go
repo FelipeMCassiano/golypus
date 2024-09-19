@@ -32,6 +32,7 @@ func (l *LoadBalancer) Serve() error {
 	return http.ListenAndServe(fmt.Sprintf(":%s", l.Port), nil)
 }
 
+// Round robin balancing
 func (l *LoadBalancer) Choose() string {
 	var serverCount int32 = 0
 	for {
