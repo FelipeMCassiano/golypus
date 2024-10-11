@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/FelipeMCassiano/golypus/internal/containers/monitor"
+	"github.com/FelipeMCassiano/golypus/internal/loadbalancer"
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
@@ -62,6 +63,11 @@ func CreateRootCommand() *cobra.Command {
 
 			group.Go(func() error {
 				return monitor.ListenDockerEvents(monitorCtx)
+			})
+
+			group.Go(func() error {
+				loadbalancer.InitWSLoadBalancer()
+				return nil
 			})
 
 			if err := group.Wait(); err != nil {

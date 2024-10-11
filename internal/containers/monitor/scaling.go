@@ -51,7 +51,6 @@ func autoScale(ctx context.Context, containerId string, metrics *containerMetric
 					continue
 				}
 
-				// Wait for 1 minute before checking again
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
